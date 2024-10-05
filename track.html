@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seguimiento en Vivo</title>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script>
+        let map, marker;
+
+        // Inicializar el mapa
+        function initMap() {
+            map = L.map('map').setView([-41.1334722, -71.3102778], 13); // Ubicación por defecto en Bariloche
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+
+            // Crear marcador en una posición vacía, se actualizará más tarde
+            marker = L.marker([0, 0]).addTo(map);
+        }
+
+        // Obtener el parámetro de la URL (trackingId)
+        function getTrackingId() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('id');
+        }
+
+        // Función para actualizar la posición en el mapa
+        function updatePosition(lat, lng) {
+            marker.setLatLng([lat, lng]);
+            map.setView([lat, lng], 15); // Ajustar la vista a la ubicación actualizada
+        }
+
+        // Obtener la ubicación del servidor
+        async function fetchLocation(trackingId) {
+            try {
+                const response = await fetch(`http://localhost/ubicacion.php?id=${trackingId}`);  // Ruta actualizada para entorno local
+                if (!response.ok) {
+                    console.error('Error al obtener la ubicación:', response.statusText);
+                    return;
+                }
+                const { lat, lng } = await response.json();
+                if (lat && lng) {
+                    updatePosition(lat, lng);  // Actualizar la posición en el mapa
+                } else {
+                    console.error('Error: Ubicación no encontrada o inválida');
+                }
+            } catch (error) {
+                console.error('Error al realizar la solicitud:', error);
+            }
+        }
+
+        // Iniciar seguimiento en tiempo real
+        function startTracking() {
+    if (navigator.geolocation) {
+        watchId = navigator.geolocation.watchPosition(position => {
+            currentLat = position.coords.latitude;
+            currentLng = position.coords.longitude;
+            marker.setLatLng([currentLat, currentLng]);
+            map.setView([currentLat, currentLng], 15);
+        }, error => {
+            console.error('Error obteniendo la geolocalización:', error);
+        }, {
+            enableHighAccuracy: true,  // Solicita alta precisión
+            timeout: 5000,  // Máximo tiempo de espera
+            maximumAge: 0   // No utiliza una ubicación almacenada
+        });
+    } else {
+        alert('Geolocalización no está soportada en este navegador.');
+    }
+}
+ 
+
+        // Iniciar el mapa y el seguimiento al cargar la página
+        initMap();
+        startTracking();
+    </script>
+</body>
+</html>

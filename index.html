@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seguimiento de Delivery</title>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        #map {
+            flex-grow: 1;
+        }
+        #controls {
+            padding: 10px;
+            background-color: #f0f0f0;
+        }
+        input, button {
+            margin: 5px;
+            padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div id="controls">
+            <input type="text" id="name" placeholder="Nombre del repartidor">
+            <input type="text" id="whatsappNumber" placeholder="Número de WhatsApp del cliente">
+            <input type="text" id="destination" placeholder="Dirección de destino">
+            <button id="startTrackingBtn">Comenzar seguimiento</button>
+            <button id="stopTrackingBtn">Dejar de seguir</button>
+            <button id="notifyCustomerBtn">Notificar al cliente por WhatsApp</button>
+            <button id="shareLocationBtn">Compartir ubicación por Google Maps</button>
+        </div>
+        <div id="map"></div>
+    </div>
+
+    <script>
+        let map, marker, watchId, currentLat, currentLng, routingControl;
+
+        // Inicializar el mapa
+        function initMap() {
+            map = L.map('map').setView([-41.1334722, -71.3102778], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            marker = L.marker([0, 0]).addTo(map);
+        }
+
+        // Geocodificar la dirección de destino
+        async function geocodeAddress(address) {
+            const query = encodeURIComponent(`${address}, San Carlos de Bariloche, Argentina`);
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`);
+            const data = await response.json();
+            if (data.length === 0) throw new Error('No se encontró la dirección');
+            return L.latLng(data[0].lat, data[0].lon);
+        }
+
+        // Configurar la ruta y mostrarla en el mapa
+        function setupRouting(start, end) {
+            if (routingControl) map.removeControl(routingControl);
+            routingControl = L.Routing.control({
+                waypoints: [start, end],
+                routeWhileDragging: true,
+                language: 'es',
+                createMarker: function() { return null; } // Deshabilita los marcadores de ruta por defecto
+            }).on('routesfound', function(e) {
+                const routes = e.routes;
+                const summary = routes[0].summary;
+                speak(`La distancia al destino es de ${summary.totalDistance / 1000} kilómetros y el tiempo estimado es de ${Math.round(summary.totalTime / 60)} minutos.`);
+            }).on('routeselected', function(e) {
+                const instructions = e.route.instructions;
+                instructions.forEach(instruction => {
+                    setTimeout(() => {
+                        speak(instruction.text);
+                    }, instruction.time * 1000);
+                });
+            }).addTo(map);
+        }
+
+        // Función para convertir texto en voz
+        function speak(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'es-ES';  // Idioma español
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // Iniciar el seguimiento
+        document.getElementById('startTrackingBtn').addEventListener('click', async () => {
+            const destinationAddress = document.getElementById('destination').value;
+            if (!destinationAddress) {
+                alert('Por favor, ingrese la dirección de destino.');
+                return;
+            }
+
+            try {
+                const destinationLatLng = await geocodeAddress(destinationAddress);
+
+                if (navigator.geolocation) {
+                    watchId = navigator.geolocation.watchPosition(position => {
+                        currentLat = position.coords.latitude;
+                        currentLng = position.coords.longitude;
+                        const currentLatLng = L.latLng(currentLat, currentLng);
+
+                        // Actualizar la posición en el mapa
+                        marker.setLatLng(currentLatLng);
+                        map.setView(currentLatLng, 15);
+
+                        // Mostrar la ruta desde la ubicación actual hasta el destino
+                        setupRouting(currentLatLng, destinationLatLng);
+                    });
+                } else {
+                    alert('Geolocalización no está soportada en este navegador.');
+                }
+            } catch (error) {
+                alert('Error al obtener la dirección de destino: ' + error.message);
+            }
+        });
+
+        // Detener el seguimiento y refrescar la página
+        document.getElementById('stopTrackingBtn').addEventListener('click', () => {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                window.location.reload();  // Refrescar la página y volver al estado inicial
+            }
+        });
+
+        // Notificar al cliente por WhatsApp
+        document.getElementById('notifyCustomerBtn').addEventListener('click', () => {
+            const name = document.getElementById('name').value;
+            const whatsappNumber = document.getElementById('whatsappNumber').value;
+            if (!name || !whatsappNumber) {
+                alert('Por favor, ingrese su nombre y el número de WhatsApp del cliente.');
+                return;
+            }
+
+            const message = `Hola, soy ${name}. Estoy llegando a tu domicilio. ¡Puedes salir a recibirme!`;
+            const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+            window.open(whatsappUrl, '_blank');  // Abrir en nueva pestaña o ventana
+        });
+
+        // Compartir la ubicación actual por Google Maps
+        document.getElementById('shareLocationBtn').addEventListener('click', () => {
+            if (currentLat && currentLng) {
+                const mapsUrl = `https://www.google.com/maps?q=${currentLat},${currentLng}`;
+                window.open(mapsUrl, '_blank');  // Abrir la ubicación en Google Maps
+            } else {
+                alert('Ubicación no disponible. Asegúrate de que la geolocalización esté activa.');
+            }
+        });
+
+        // Inicializar el mapa al cargar la página
+        initMap();
+    </script>
+</body>
+</html>
