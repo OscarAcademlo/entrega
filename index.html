@@ -79,22 +79,13 @@
             }).on('routesfound', function(e) {
                 const routes = e.routes;
                 const summary = routes[0].summary;
-                speak(`La distancia al destino es de ${summary.totalDistance / 1000} kilómetros y el tiempo estimado es de ${Math.round(summary.totalTime / 60)} minutos.`);
+                console.log(`La distancia al destino es de ${summary.totalDistance / 1000} kilómetros y el tiempo estimado es de ${Math.round(summary.totalTime / 60)} minutos.`);
             }).on('routeselected', function(e) {
                 const instructions = e.route.instructions;
                 instructions.forEach(instruction => {
-                    setTimeout(() => {
-                        speak(instruction.text);
-                    }, instruction.time * 1000);
+                    console.log(instruction.text);
                 });
             }).addTo(map);
-        }
-
-        // Función para convertir texto en voz
-        function speak(text) {
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'es-ES';  // Idioma español
-            window.speechSynthesis.speak(utterance);
         }
 
         // Iniciar el seguimiento
